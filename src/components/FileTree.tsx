@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { useState, useMemo } from 'react'
 import { useProjectStore, type FileEntry } from '../store/projectStore'
 import { ChevronRight, ChevronDown, FileCode, Folder, FolderOpen, Cpu, Database, Box, File, Layers } from 'lucide-react'
 import { cn } from '../utils/cn'
@@ -46,6 +46,18 @@ function TreeNode({ node, depth, onSelectFile }: TreeNodeProps): JSX.Element {
   const hasChildren = node.children.length > 0
   const selectedFile = useProjectStore((s) => s.selectedFile)
   const isSelected = selectedFile === node.path
+  const architectureGraph = useProjectStore((s) => s.architectureGraph)
+
+  const healthColor = useMemo((): string | null => {
+    if (!architectureGraph) return null
+    for (const n of architectureGraph.nodes) {
+      if (n.path !== node.path || n.issues.length === 0) continue
+      if (n.issues.some(i => i.severity === 'CRITICAL')) return '#ef4444'
+      if (n.issues.some(i => i.severity === 'WARNING')) return '#f59e0b'
+      return '#22c55e'
+    }
+    return null
+  }, [architectureGraph, node.path])
 
   if (!hasChildren) {
     return (
@@ -59,6 +71,7 @@ function TreeNode({ node, depth, onSelectFile }: TreeNodeProps): JSX.Element {
         style={{ paddingLeft: `${8 + depth * 16}px` }}
         onClick={() => onSelectFile(node.path)}
       >
+        {healthColor && <span className="shrink-0 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: healthColor }} />}
         <FileIcon layer={node.layer} />
         <span className="truncate">{node.name}</span>
         <LayerBadge layer={node.layer} />
@@ -80,6 +93,7 @@ function TreeNode({ node, depth, onSelectFile }: TreeNodeProps): JSX.Element {
           ? <FolderOpen size={14} className="text-gray-400 shrink-0" />
           : <Folder size={14} className="text-gray-400 shrink-0" />
         }
+        {healthColor && <span className="shrink-0 w-1.5 h-1.5 rounded-full" style={{ backgroundColor: healthColor }} />}
         <span className="truncate font-medium text-gray-200">{node.name}</span>
       </div>
       <div className={cn(

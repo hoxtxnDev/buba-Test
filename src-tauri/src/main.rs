@@ -3,6 +3,7 @@ mod models;
 mod opencode;
 mod patcher;
 
+use analyzer::architecture::build_architecture_graph;
 use analyzer::file_scanner::scan_folder;
 use analyzer::parser::analyze_file_static;
 use analyzer::static_rules::run_all_rules;
@@ -21,6 +22,12 @@ fn normalize_path(path: &str) -> PathBuf {
 
 struct AppState {
     project_root: Mutex<Option<String>>,
+}
+
+#[tauri::command]
+fn build_architecture(root: String) -> Result<analyzer::architecture::ArchitectureGraph, String> {
+    let normalized = normalize_path(&root);
+    build_architecture_graph(normalized.to_str().unwrap_or(&root)).map_err(|e| e)
 }
 
 #[tauri::command]
@@ -237,6 +244,7 @@ fn main() {
             apply_fix,
             generate_test,
             save_test,
+            build_architecture,
         ])
         .run(tauri::generate_context!())
         .expect("error al iniciar JavaLens");

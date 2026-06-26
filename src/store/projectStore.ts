@@ -44,66 +44,97 @@ export interface Toast {
   type: 'success' | 'error'
 }
 
-interface AppState {
-  projectRoot: string | null
-  fileTree: FileEntry | null
-  selectedFile: string | null
-  fileContent: string | null
-  analysisResult: AnalysisResult | null
-  projectAnalysis: ProjectAnalysis | null
-  selectedIssueIndex: number | null
-  scrollToLine: number | null
-  isAnalyzing: boolean
-  opencodeOutput: string | null
-  generatedTest: string | null
-  activeTab: 'analysis' | 'tests'
-  sidebarOpen: boolean
-  toast: Toast | null
+export interface ArchitectureGraph {
+  nodes: ArchNode[]
+  edges: ArchEdge[]
+}
 
-  setProjectRoot: (root: string) => void
-  setFileTree: (tree: FileEntry) => void
-  setSelectedFile: (path: string | null) => void
-  setFileContent: (content: string | null) => void
-  setAnalysisResult: (result: AnalysisResult | null) => void
-  setProjectAnalysis: (analysis: ProjectAnalysis | null) => void
-  setSelectedIssueIndex: (index: number | null) => void
-  setScrollToLine: (line: number | null) => void
-  setIsAnalyzing: (v: boolean) => void
-  setOpencodeOutput: (v: string | null) => void
-  setGeneratedTest: (v: string | null) => void
-  setActiveTab: (tab: 'analysis' | 'tests') => void
-  setSidebarOpen: (open: boolean) => void
-  setToast: (toast: Toast | null) => void
+export interface ArchNode {
+  id: string
+  name: string
+  layer: 'CONTROLLER' | 'SERVICE' | 'REPOSITORY' | 'ENTITY' | 'DTO' | 'UNKNOWN'
+  pkg: string
+  path: string
+  microservice: string
+  lines: number
+  issues: Issue[]
+  endpoints: Endpoint[]
+  dependencies: string[]
+}
+
+export interface Endpoint {
+  method: 'GET' | 'POST' | 'PUT' | 'DELETE' | 'PATCH'
+  path: string
+}
+
+export interface ArchEdge {
+  from: string
+  to: string
+  type: 'INJECTION' | 'FEIGN' | 'MISSING'
+}
+
+interface AppState {
+  fileTree: FileEntry | null
+  setFileTree: (f: FileEntry | null) => void
+  projectRoot: string | null
+  setProjectRoot: (r: string | null) => void
+  selectedFile: string | null
+  setSelectedFile: (f: string | null) => void
+  analysisResult: AnalysisResult | null
+  setAnalysisResult: (r: AnalysisResult | null) => void
+  selectedIssueIndex: number | null
+  setSelectedIssueIndex: (i: number | null) => void
+  fileContent: string
+  setFileContent: (c: string) => void
+  generatedTest: string | null
+  setGeneratedTest: (t: string | null) => void
+  projectAnalysis: ProjectAnalysis | null
+  setProjectAnalysis: (a: ProjectAnalysis | null) => void
+  sidebarOpen: boolean
+  setSidebarOpen: (o: boolean) => void
+  activeTab: string
+  setActiveTab: (t: string) => void
+  toast: Toast | null
+  setToast: (t: Toast | null) => void
+  architectureGraph: ArchitectureGraph | null
+  setArchitectureGraph: (g: ArchitectureGraph | null) => void
+  scrollToLine: number | null
+  setScrollToLine: (n: number | null) => void
+  isAnalyzing: boolean
+  setIsAnalyzing: (a: boolean) => void
+  opencodeOutput: string | null
+  setOpencodeOutput: (o: string | null) => void
 }
 
 export const useProjectStore = create<AppState>((set) => ({
-  projectRoot: null,
   fileTree: null,
+  setFileTree: (f) => set({ fileTree: f }),
+  projectRoot: null,
+  setProjectRoot: (r) => set({ projectRoot: r }),
   selectedFile: null,
-  fileContent: null,
+  setSelectedFile: (f) => set({ selectedFile: f }),
   analysisResult: null,
-  projectAnalysis: null,
+  setAnalysisResult: (r) => set({ analysisResult: r }),
   selectedIssueIndex: null,
-  scrollToLine: null,
-  isAnalyzing: false,
-  opencodeOutput: null,
+  setSelectedIssueIndex: (i) => set({ selectedIssueIndex: i }),
+  fileContent: '',
+  setFileContent: (c) => set({ fileContent: c }),
   generatedTest: null,
-  activeTab: 'analysis',
+  setGeneratedTest: (t) => set({ generatedTest: t }),
+  projectAnalysis: null,
+  setProjectAnalysis: (a) => set({ projectAnalysis: a }),
   sidebarOpen: true,
+  setSidebarOpen: (o) => set({ sidebarOpen: o }),
+  activeTab: 'bugs',
+  setActiveTab: (t) => set({ activeTab: t }),
   toast: null,
-
-  setProjectRoot: (root) => set({ projectRoot: root }),
-  setFileTree: (tree) => set({ fileTree: tree }),
-  setSelectedFile: (path) => set({ selectedFile: path }),
-  setFileContent: (content) => set({ fileContent: content }),
-  setAnalysisResult: (result) => set({ analysisResult: result }),
-  setProjectAnalysis: (analysis) => set({ projectAnalysis: analysis }),
-  setSelectedIssueIndex: (index) => set({ selectedIssueIndex: index }),
-  setScrollToLine: (line) => set({ scrollToLine: line }),
-  setIsAnalyzing: (v) => set({ isAnalyzing: v }),
-  setOpencodeOutput: (v) => set({ opencodeOutput: v }),
-  setGeneratedTest: (v) => set({ generatedTest: v }),
-  setActiveTab: (tab) => set({ activeTab: tab }),
-  setSidebarOpen: (open) => set({ sidebarOpen: open }),
-  setToast: (toast) => set({ toast }),
+  setToast: (t) => set({ toast: t }),
+  architectureGraph: null,
+  setArchitectureGraph: (g) => set({ architectureGraph: g }),
+  scrollToLine: null,
+  setScrollToLine: (n) => set({ scrollToLine: n }),
+  isAnalyzing: false,
+  setIsAnalyzing: (a) => set({ isAnalyzing: a }),
+  opencodeOutput: null,
+  setOpencodeOutput: (o) => set({ opencodeOutput: o }),
 }))

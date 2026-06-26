@@ -4,12 +4,14 @@ import { CodeViewer } from './components/CodeViewer'
 import { BugPanel } from './components/BugPanel'
 import { Dashboard } from './components/Dashboard'
 import { TestOutput } from './components/TestOutput'
+import { ArchitectureView } from './components/ArchitectureView'
 import { useFileTree } from './hooks/useFileTree'
-import { useProjectStore, type AnalysisResult, type Toast } from './store/projectStore'
-import { FolderOpen, FlaskConical, Bug, PanelRightClose, PanelRightOpen, Menu, Settings, HelpCircle, X, CheckCircle, AlertCircle, Layers, FileText } from 'lucide-react'
+import { useProjectStore, type AnalysisResult, type ArchitectureGraph, type Toast } from './store/projectStore'
+import { FolderOpen, FlaskConical, Bug, PanelRightClose, PanelRightOpen, Menu, Settings, HelpCircle, X, CheckCircle, AlertCircle, Network, FileCode, Layers, FileText } from 'lucide-react'
 import { cn } from './utils/cn'
 
 type RightPanel = 'bugs' | 'tests'
+type ViewMode = 'code' | 'architecture'
 
 function ToastBar(): JSX.Element | null {
   const toast = useProjectStore((s) => s.toast)
@@ -55,6 +57,22 @@ export default function App(): JSX.Element {
 
   const [rightPanel, setRightPanel] = useState<RightPanel>('bugs')
   const [rightOpen, setRightOpen] = useState(true)
+  const [view, setView] = useState<ViewMode>('code')
+  const projectRoot = useProjectStore((s) => s.projectRoot)
+  const setArchitectureGraph = useProjectStore((s) => s.setArchitectureGraph)
+
+  useEffect(() => {
+    if (!projectRoot) return
+    ;(async () => {
+      try {
+        const { invoke } = await import('@tauri-apps/api/core')
+        const graph = await invoke<ArchitectureGraph>('build_architecture', { root: projectRoot })
+        setArchitectureGraph(graph)
+      } catch (e) {
+        console.error('Error building architecture:', e)
+      }
+    })()
+  }, [projectRoot, setArchitectureGraph])
 
   const handleSelectFile = useCallback(async (path: string): Promise<void> => {
     setSelectedFile(path)
@@ -156,6 +174,31 @@ export default function App(): JSX.Element {
               Generar test
             </button>
           )}
+          {projectRoot && (
+            <>
+              <div className="w-px h-4 bg-dark-border mx-1" />
+              <button
+                onClick={() => setView('code')}
+                className={cn(
+                  'flex items-center gap-1 px-3 py-1.5 text-xs rounded transition-colors font-medium',
+                  view === 'code' ? 'bg-dark-card text-accent-blue' : 'text-gray-400 hover:text-white'
+                )}
+              >
+                <FileCode size={13} />
+                Código
+              </button>
+              <button
+                onClick={() => setView('architecture')}
+                className={cn(
+                  'flex items-center gap-1 px-3 py-1.5 text-xs rounded transition-colors font-medium',
+                  view === 'architecture' ? 'bg-dark-card text-accent-blue' : 'text-gray-400 hover:text-white'
+                )}
+              >
+                <Network size={13} />
+                Arquitectura
+              </button>
+            </>
+          )}
         </div>
         <div className="ml-auto flex items-center gap-1">
           <button
@@ -213,9 +256,14 @@ export default function App(): JSX.Element {
           </div>
         </aside>
 
-        {/* Code Viewer */}
-        <main className="flex-1 overflow-hidden flex flex-col">
-          {selectedFile ? (
+        {/* Code Viewer / Architecture View */}
+        <main className={cn(
+          'flex-1 overflow-hidden flex flex-col',
+          view === 'architecture' && 'w-full'
+        )}>
+          {view === 'architecture' ? (
+            <ArchitectureView />
+          ) : selectedFile ? (
             <>
               <div className="flex items-center justify-between px-4 py-1.5 text-xs text-gray-500 border-b border-dark-border bg-dark-surface shrink-0">
                 <span className="truncate font-mono">{selectedFile}</span>
@@ -243,7 +291,7 @@ export default function App(): JSX.Element {
         <aside
           className={cn(
             'border-l border-dark-border bg-dark-surface transition-all duration-150 ease-out overflow-hidden shrink-0',
-            rightOpen ? 'w-[340px]' : 'w-0'
+            view === 'architecture' ? 'w-0' : rightOpen ? 'w-[340px]' : 'w-0'
           )}
         >
           <div className="h-full flex flex-col">
