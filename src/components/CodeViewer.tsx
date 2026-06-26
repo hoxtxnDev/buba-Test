@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useMemo } from 'react'
 import CodeMirror from '@uiw/react-codemirror'
 import { EditorView } from '@codemirror/view'
 import { java } from '@codemirror/lang-java'
@@ -137,7 +137,7 @@ export function CodeViewer({ filePath }: CodeViewerProps): JSX.Element {
     })
   }, [content, analysisResult])
 
-  const extensions = [
+  const extensions = useMemo(() => [
     java(),
     gutterMarkerField,
     flashHighlightField,
@@ -145,7 +145,17 @@ export function CodeViewer({ filePath }: CodeViewerProps): JSX.Element {
       '&': { backgroundColor: '#0d0f14' },
       '.cm-gutters': { backgroundColor: '#0d0f14', borderRight: '1px solid #2a2f3d' },
     }),
-  ]
+  ], [])
+
+  useEffect(() => {
+    if (!editorRef.current || !content) return
+    const view = editorRef.current
+    const current = view.state.doc.toString()
+    if (current === content) return
+    view.dispatch({
+      changes: { from: 0, to: view.state.doc.length, insert: content },
+    })
+  }, [content])
 
   if (!filePath) {
     return (
@@ -161,7 +171,6 @@ export function CodeViewer({ filePath }: CodeViewerProps): JSX.Element {
     <div className="h-full flex flex-col overflow-hidden">
       <div className="flex-1 overflow-hidden">
         <CodeMirror
-          value={content}
           extensions={extensions}
           theme="dark"
           height="100%"
@@ -171,6 +180,11 @@ export function CodeViewer({ filePath }: CodeViewerProps): JSX.Element {
           }}
           onCreateEditor={(view: EditorView) => {
             editorRef.current = view
+            if (content) {
+              view.dispatch({
+                changes: { from: 0, to: view.state.doc.length, insert: content },
+              })
+            }
           }}
         />
       </div>

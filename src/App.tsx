@@ -11,7 +11,6 @@ import { FolderOpen, FlaskConical, Bug, PanelRightClose, PanelRightOpen, Menu, S
 import { cn } from './utils/cn'
 
 type RightPanel = 'bugs' | 'tests'
-type ViewMode = 'code' | 'architecture'
 
 function ToastBar(): JSX.Element | null {
   const toast = useProjectStore((s) => s.toast)
@@ -54,25 +53,22 @@ export default function App(): JSX.Element {
   const fileTree = useProjectStore((s) => s.fileTree)
   const projectAnalysis = useProjectStore((s) => s.projectAnalysis)
   const analysisResult = useProjectStore((s) => s.analysisResult)
-
-  const [rightPanel, setRightPanel] = useState<RightPanel>('bugs')
-  const [rightOpen, setRightOpen] = useState(true)
   const view = useProjectStore((s) => s.view)
   const setView = useProjectStore((s) => s.setView)
   const projectRoot = useProjectStore((s) => s.projectRoot)
   const setArchitectureGraph = useProjectStore((s) => s.setArchitectureGraph)
 
+  const [rightPanel, setRightPanel] = useState<RightPanel>('bugs')
+  const [rightOpen, setRightOpen] = useState(true)
+
+  // Background architecture build — non-blocking
   useEffect(() => {
     if (!projectRoot) return
-    ;(async () => {
-      try {
-        const { invoke } = await import('@tauri-apps/api/core')
-        const graph = await invoke<ArchitectureGraph>('build_architecture', { root: projectRoot })
-        setArchitectureGraph(graph)
-      } catch (e) {
-        console.error('Error building architecture:', e)
-      }
-    })()
+    import('@tauri-apps/api/core').then(({ invoke }) => {
+      invoke('build_architecture', { root: projectRoot })
+        .then((graph: unknown) => setArchitectureGraph(graph as ArchitectureGraph))
+        .catch(console.error)
+    })
   }, [projectRoot, setArchitectureGraph])
 
   const handleSelectFile = useCallback(async (path: string): Promise<void> => {
@@ -109,6 +105,11 @@ export default function App(): JSX.Element {
       setToast({ message: 'Error al generar test', type: 'error' })
     }
   }, [setGeneratedTest, setActiveTab, setToast])
+
+  const handleTabSwitch = useCallback((tab: 'code' | 'architecture') => {
+    if (tab === view) return  // already active, skip
+    setView(tab)
+  }, [view, setView])
 
   useEffect(() => {
     const handler = (e: KeyboardEvent): void => {
@@ -179,7 +180,7 @@ export default function App(): JSX.Element {
             <>
               <div className="w-px h-4 bg-dark-border mx-1" />
               <button
-                onClick={() => setView('code')}
+                onClick={() => handleTabSwitch('code')}
                 className={cn(
                   'flex items-center gap-1 px-3 py-1.5 text-xs rounded transition-colors font-medium',
                   view === 'code' ? 'bg-dark-card text-accent-blue' : 'text-gray-400 hover:text-white'
@@ -189,7 +190,7 @@ export default function App(): JSX.Element {
                 Código
               </button>
               <button
-                onClick={() => setView('architecture')}
+                onClick={() => handleTabSwitch('architecture')}
                 className={cn(
                   'flex items-center gap-1 px-3 py-1.5 text-xs rounded transition-colors font-medium',
                   view === 'architecture' ? 'bg-dark-card text-accent-blue' : 'text-gray-400 hover:text-white'
@@ -238,7 +239,7 @@ export default function App(): JSX.Element {
         </div>
       </header>
 
-      {/* Main 3-column area */}
+      {/* Main area */}
       <div className="flex flex-1 overflow-hidden">
         {/* Sidebar */}
         <aside
@@ -257,48 +258,48 @@ export default function App(): JSX.Element {
           </div>
         </aside>
 
-        {/* Code Viewer / Architecture View */}
-        <main className={cn(
-          'flex-1 overflow-hidden flex flex-col',
-          view === 'architecture' && 'w-full'
-        )}>
-          {view === 'architecture' ? (
-            <ArchitectureView />
-          ) : selectedFile ? (
-            <>
-              <div className="flex items-center justify-between px-4 py-1.5 text-xs text-gray-500 border-b border-dark-border bg-dark-surface shrink-0">
-                <span className="truncate font-mono">{selectedFile}</span>
-                <button
-                  onClick={() => handleSelectFile(selectedFile)}
-                  className="text-gray-400 hover:text-white transition-colors ml-2 shrink-0"
-                  title="Recargar"
-                >
-                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                    <path d="M1 4v6h6M23 20v-6h-6" />
-                    <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" />
-                  </svg>
-                </button>
-              </div>
-              <div className="flex-1 overflow-hidden">
-                <CodeViewer filePath={selectedFile} />
-              </div>
-            </>
-          ) : (
-            <Dashboard />
-          )}
-        </main>
+        {/* Code view — always mounted, toggled by display */}
+        <div style={{ display: view === 'code' ? 'flex' : 'none', flex: 1, overflow: 'hidden' }}>
+          <main className="flex-1 overflow-hidden flex flex-col">
+            {selectedFile ? (
+              <>
+                <div className="flex items-center justify-between px-4 py-1.5 text-xs text-gray-500 border-b border-dark-border bg-dark-surface shrink-0">
+                  <span className="truncate font-mono">{selectedFile}</span>
+                  <button
+                    onClick={() => handleSelectFile(selectedFile)}
+                    className="text-gray-400 hover:text-white transition-colors ml-2 shrink-0"
+                    title="Recargar"
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+                      <path d="M1 4v6h6M23 20v-6h-6" />
+                      <path d="M20.49 9A9 9 0 0 0 5.64 5.64L1 10m22 4l-4.64 4.36A9 9 0 0 1 3.51 15" />
+                    </svg>
+                  </button>
+                </div>
+                <div className="flex-1 overflow-hidden">
+                  <CodeViewer filePath={selectedFile} />
+                </div>
+              </>
+            ) : (
+              <Dashboard />
+            )}
+          </main>
+          <aside className={cn(
+            'border-l border-dark-border bg-dark-surface overflow-hidden shrink-0',
+            rightOpen ? 'w-[340px]' : 'w-0'
+          )}>
+            <div className="h-full flex flex-col">
+              {rightPanel === 'bugs' ? <BugPanel /> : <TestOutput />}
+            </div>
+          </aside>
+        </div>
 
-        {/* Right Panel */}
-        <aside
-          className={cn(
-            'border-l border-dark-border bg-dark-surface transition-all duration-150 ease-out overflow-hidden shrink-0',
-            view === 'architecture' ? 'w-0' : rightOpen ? 'w-[340px]' : 'w-0'
-          )}
-        >
-          <div className="h-full flex flex-col">
-            {rightPanel === 'bugs' ? <BugPanel /> : <TestOutput />}
-          </div>
-        </aside>
+        {/* Architecture view — always mounted, toggled by display */}
+        <div style={{ display: view === 'architecture' ? 'flex' : 'none', flex: 1, overflow: 'hidden' }}>
+          <main className="flex-1 overflow-hidden">
+            <ArchitectureView />
+          </main>
+        </div>
       </div>
 
       {/* StatusBar */}
