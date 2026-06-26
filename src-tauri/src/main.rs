@@ -9,9 +9,15 @@ use analyzer::static_rules::run_all_rules;
 use models::{AnalysisResult, FileEntry, Issue, ProjectAnalysis};
 use opencode::runner::run_opencode_analysis;
 use patcher::apply_fix_to_file;
+use std::fs;
+use std::path::PathBuf;
 use std::sync::Mutex;
 use tauri::{Emitter, Manager};
 use tauri_plugin_dialog::DialogExt;
+
+fn normalize_path(path: &str) -> PathBuf {
+    PathBuf::from(path.replace('/', std::path::MAIN_SEPARATOR_STR))
+}
 
 struct AppState {
     project_root: Mutex<Option<String>>,
@@ -29,17 +35,27 @@ async fn open_folder(app: tauri::AppHandle) -> Result<FileEntry, String> {
     match file {
         Some(path) => {
             let path_str = path.to_string();
+            let normalized = normalize_path(&path_str);
             let state = app.state::<AppState>();
             *state.project_root.lock().unwrap() = Some(path_str.clone());
-            scan_folder(&path_str).map_err(|e| e.to_string())
+            scan_folder(normalized.to_str().unwrap_or(&path_str)).map_err(|e| e.to_string())
         }
         None => Err("No se seleccionó ninguna carpeta".to_string()),
     }
 }
 
 #[tauri::command]
+fn read_file(path: String) -> Result<String, String> {
+    let normalized = normalize_path(&path);
+    fs::read_to_string(&normalized)
+        .map_err(|e| format!("Error leyendo {}: {}", normalized.display(), e))
+}
+
+#[tauri::command]
 fn analyze_file(path: String) -> Result<AnalysisResult, String> {
-    let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let normalized = normalize_path(&path);
+    let content = fs::read_to_string(&normalized)
+        .map_err(|e| format!("Error leyendo {}: {}", normalized.display(), e))?;
     let (class_name, package, layer, _methods) = analyze_file_static(&content);
     let issues = run_all_rules(&path, &content);
     Ok(AnalysisResult {
@@ -52,7 +68,9 @@ fn analyze_file(path: String) -> Result<AnalysisResult, String> {
 
 #[tauri::command]
 fn analyze_project(root: String) -> Result<ProjectAnalysis, String> {
-    let entries = scan_folder(&root).map_err(|e| e.to_string())?;
+    let normalized_root = normalize_path(&root);
+    let root_str = normalized_root.to_str().unwrap_or(&root);
+    let entries = scan_folder(root_str).map_err(|e| e.to_string())?;
     let mut total_files = 0;
     let mut total_lines = 0;
     let mut all_issues: Vec<Issue> = Vec::new();
@@ -68,8 +86,8 @@ fn analyze_project(root: String) -> Result<ProjectAnalysis, String> {
         if entry.children.is_empty() {
             *files += 1;
             *lines += entry.lines;
-            // Analyze this file
-            if let Ok(content) = std::fs::read_to_string(&entry.path) {
+            let normalized = normalize_path(&entry.path);
+            if let Ok(content) = fs::read_to_string(&normalized) {
                 let file_issues = run_all_rules(&entry.path, &content);
                 let count = file_issues.len();
                 if count > 0 {
@@ -141,12 +159,15 @@ fn run_opencode(
 
 #[tauri::command]
 fn apply_fix(path: String, line: usize, fix: String) -> Result<(), String> {
-    apply_fix_to_file(&path, line, &fix).map_err(|e| e.to_string())
+    let normalized = normalize_path(&path);
+    apply_fix_to_file(normalized.to_str().unwrap_or(&path), line, &fix).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
 fn generate_test(path: String, layer: String) -> Result<String, String> {
-    let content = std::fs::read_to_string(&path).map_err(|e| e.to_string())?;
+    let normalized = normalize_path(&path);
+    let content = fs::read_to_string(&normalized)
+        .map_err(|e| format!("Error leyendo {}: {}", normalized.display(), e))?;
     let (class_name, package, detected_layer, _methods) = analyze_file_static(&content);
     let target_layer = if layer.is_empty() { detected_layer } else { layer };
 
@@ -196,7 +217,8 @@ class {class_name} {{
 
 #[tauri::command]
 fn save_test(content: String, dest: String) -> Result<(), String> {
-    std::fs::write(&dest, &content).map_err(|e| e.to_string())
+    let normalized = normalize_path(&dest);
+    fs::write(&normalized, &content).map_err(|e| e.to_string())
 }
 
 fn main() {
@@ -208,6 +230,7 @@ fn main() {
         })
         .invoke_handler(tauri::generate_handler![
             open_folder,
+            read_file,
             analyze_file,
             analyze_project,
             run_opencode,

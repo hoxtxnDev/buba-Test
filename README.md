@@ -70,6 +70,12 @@ npm install
 cargo tauri dev
 ```
 
+> Si `cargo` no se reconoce, agrégalo al PATH:
+> ```powershell
+> $env:Path = "$env:USERPROFILE\.cargo\bin;$env:Path"; cargo tauri dev
+> ```
+> O cierra y abre una nueva terminal.
+
 ## Build
 
 ```bash

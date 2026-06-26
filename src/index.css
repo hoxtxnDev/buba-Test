@@ -14,54 +14,56 @@ body {
   padding: 0;
   min-height: 100vh;
   overflow: hidden;
+  background: #0d0f14;
+  color: #e5e7eb;
 }
 
 ::-webkit-scrollbar {
   width: 6px;
   height: 6px;
 }
-
 ::-webkit-scrollbar-track {
-  background: #1a1a2e;
+  background: #0d0f14;
 }
-
 ::-webkit-scrollbar-thumb {
-  background: #2a2a4a;
+  background: #2a2f3d;
   border-radius: 3px;
 }
-
 ::-webkit-scrollbar-thumb:hover {
-  background: #3a3a5a;
+  background: #3d4560;
 }
 
 .cm-editor {
   height: 100%;
   font-family: 'JetBrains Mono', monospace;
   font-size: 13px;
+  background: #0d0f14;
 }
-
 .cm-editor .cm-gutters {
-  background-color: #16213e;
-  border-right: 1px solid #2a2a4a;
+  background: #0d0f14;
+  border-right: 1px solid #2a2f3d;
+  color: #3d4560;
 }
-
 .cm-editor .cm-activeLineGutter {
-  background-color: #0f3460;
+  background: #13161d;
 }
-
 .cm-editor .cm-activeLine {
-  background-color: #0f346044;
+  background: #13161d55;
 }
-
 .cm-editor .cm-cursor {
   border-left-color: #4f8ef7;
 }
-
 .cm-editor .cm-selectionBackground {
   background: #4f8ef733 !important;
 }
+.cm-editor .cm-lineNumbers .cm-gutterElement {
+  padding: 0 8px;
+}
 
-.bug-marker {
-  background-color: #ef444455;
-  border-left: 3px solid #ef4444;
+@keyframes flash-bg {
+  0%, 100% { background: transparent; }
+  50% { background: rgba(79, 142, 247, 0.15); }
+}
+.bug-flash {
+  animation: flash-bg 0.6s ease-out;
 }

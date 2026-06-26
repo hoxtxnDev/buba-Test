@@ -1,8 +1,10 @@
 use anyhow::Result;
 use std::fs;
+use std::path::Path;
 
 pub fn apply_fix_to_file(path: &str, line: usize, code_fix: &str) -> Result<()> {
-    let content = fs::read_to_string(path)?;
+    let normalized = Path::new(path);
+    let content = fs::read_to_string(normalized)?;
     let mut lines: Vec<String> = content.lines().map(|l| l.to_string()).collect();
 
     if line == 0 || line > lines.len() {

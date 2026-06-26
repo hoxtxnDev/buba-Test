@@ -1,10 +1,14 @@
+import { useState } from 'react'
 import { useProjectStore } from '../store/projectStore'
-import { Download, FileJson } from 'lucide-react'
+import { Download, FileJson, Loader2, Sparkles, FileCode } from 'lucide-react'
 
 export function TestOutput(): JSX.Element {
   const opencodeOutput = useProjectStore((s) => s.opencodeOutput)
   const generatedTest = useProjectStore((s) => s.generatedTest)
   const selectedFile = useProjectStore((s) => s.selectedFile)
+  const analysisResult = useProjectStore((s) => s.analysisResult)
+  const setToast = useProjectStore((s) => s.setToast)
+  const [generating, setGenerating] = useState(false)
 
   const handleDownload = async (): Promise<void> => {
     if (!generatedTest) return
@@ -17,14 +21,17 @@ export function TestOutput(): JSX.Element {
       })
       if (dest) {
         await writeTextFile(dest, generatedTest)
+        setToast({ message: 'Test guardado exitosamente', type: 'success' })
       }
     } catch (e: unknown) {
       console.error('Error al guardar:', e)
+      setToast({ message: 'Error al guardar el test', type: 'error' })
     }
   }
 
-  const handleGenerateTest = async (): Promise<void> => {
+  const handleGenerateTest = async (ai: boolean): Promise<void> => {
     if (!selectedFile) return
+    setGenerating(true)
     try {
       const { invoke } = await import('@tauri-apps/api/core')
       const state = useProjectStore.getState()
@@ -33,62 +40,82 @@ export function TestOutput(): JSX.Element {
         layer: state.analysisResult?.layer || '',
       })
       useProjectStore.getState().setGeneratedTest(testCode)
+      setToast({ message: 'Test generado exitosamente', type: 'success' })
     } catch (e: unknown) {
       console.error('Error al generar test:', e)
+      setToast({ message: 'Error al generar test', type: 'error' })
+    } finally {
+      setGenerating(false)
     }
   }
 
-  if (!opencodeOutput && !generatedTest) {
-    return (
-      <div className="flex items-center justify-center h-full text-gray-500 text-sm p-4 text-center">
-        <div>
-          <FileJson size={32} className="mx-auto mb-2 opacity-40" />
-          <p>Ejecuta un análisis con IA o genera tests para ver resultados aquí</p>
-          {selectedFile && (
-            <button
-              onClick={handleGenerateTest}
-              className="mt-3 px-3 py-1.5 bg-accent-blue text-white text-xs rounded hover:bg-blue-600 transition-colors"
-            >
-              Generar test para archivo actual
-            </button>
-          )}
-        </div>
-      </div>
-    )
-  }
+  const detectedLayer = analysisResult?.layer
 
   return (
     <div className="h-full flex flex-col">
-      <div className="p-3 border-b border-dark-border flex items-center justify-between">
-        <h3 className="text-sm font-semibold text-gray-200">Salida</h3>
-        {generatedTest && (
-          <button
-            onClick={handleDownload}
-            className="flex items-center gap-1 px-2 py-1 text-xs bg-accent-blue text-white rounded hover:bg-blue-600 transition-colors"
-          >
-            <Download size={12} />
-            Descargar .java
-          </button>
+      <div className="p-3 border-b border-dark-border">
+        <h3 className="text-sm font-semibold text-gray-200 mb-2">Tests</h3>
+        {detectedLayer && (
+          <span className="inline-flex items-center px-2 py-0.5 text-[10px] font-medium rounded-full bg-gray-700/50 text-gray-400 mb-3">
+            Capa detectada: {detectedLayer}
+          </span>
         )}
+        <div className="flex gap-2">
+          <button
+            onClick={() => handleGenerateTest(false)}
+            disabled={generating || !selectedFile}
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs bg-accent-blue text-white rounded hover:bg-blue-600 disabled:opacity-50 transition-colors font-medium"
+          >
+            {generating ? <Loader2 size={12} className="animate-spin" /> : <FileCode size={12} />}
+            Generar template
+          </button>
+          <button
+            onClick={() => handleGenerateTest(true)}
+            disabled={generating || !selectedFile}
+            className="flex-1 flex items-center justify-center gap-1.5 px-3 py-1.5 text-xs bg-accent-purple text-white rounded hover:bg-purple-600 disabled:opacity-50 transition-colors font-medium"
+          >
+            {generating ? <Loader2 size={12} className="animate-spin" /> : <Sparkles size={12} />}
+            Generar con IA
+          </button>
+        </div>
       </div>
-      <div className="flex-1 overflow-y-auto p-4">
+
+      <div className="flex-1 overflow-y-auto p-3">
+        {!opencodeOutput && !generatedTest && (
+          <div className="flex flex-col items-center justify-center h-full text-gray-500 text-sm text-center">
+            <FileJson size={32} className="mb-2 opacity-30" />
+            <p>Genera tests para ver resultados aquí</p>
+          </div>
+        )}
         {opencodeOutput && (
           <div className="mb-4">
-            <h4 className="text-xs font-semibold text-gray-400 mb-2 uppercase">Análisis IA</h4>
-            <pre className="text-sm text-gray-200 whitespace-pre-wrap font-mono bg-dark-surface p-3 rounded">
+            <h4 className="text-[10px] font-semibold text-gray-500 mb-2 uppercase tracking-wider">Análisis IA</h4>
+            <pre className="text-sm text-gray-200 whitespace-pre-wrap font-mono bg-dark-base p-3 rounded border border-dark-border">
               {opencodeOutput}
             </pre>
           </div>
         )}
         {generatedTest && (
           <div>
-            <h4 className="text-xs font-semibold text-gray-400 mb-2 uppercase">Test generado</h4>
-            <pre className="text-sm text-gray-200 whitespace-pre-wrap font-mono bg-dark-surface p-3 rounded">
+            <h4 className="text-[10px] font-semibold text-gray-500 mb-2 uppercase tracking-wider">Test generado</h4>
+            <pre className="text-sm text-gray-200 whitespace-pre-wrap font-mono bg-dark-base p-3 rounded border border-dark-border overflow-x-auto">
               {generatedTest}
             </pre>
           </div>
         )}
       </div>
+
+      {generatedTest && (
+        <div className="p-3 border-t border-dark-border">
+          <button
+            onClick={handleDownload}
+            className="w-full flex items-center justify-center gap-1.5 px-3 py-2 text-xs bg-accent-blue text-white rounded hover:bg-blue-600 transition-colors font-medium"
+          >
+            <Download size={12} />
+            Descargar .java
+          </button>
+        </div>
+      )}
     </div>
   )
 }
