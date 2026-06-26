@@ -45,7 +45,7 @@ const gutterMarkerField = StateField.define<DecorationSet>({
   provide: (f) => EditorView.decorations.from(f),
 })
 
-const flashHighlightEffect = StateEffect.define<number | null>() // line number (1-based)
+const flashHighlightEffect = StateEffect.define<number | null>()
 
 const flashHighlightField = StateField.define<DecorationSet>({
   create() { return Decoration.none },
@@ -69,6 +69,7 @@ const flashHighlightField = StateField.define<DecorationSet>({
 export function CodeViewer({ filePath }: CodeViewerProps): JSX.Element {
   const [content, setContent] = useState('')
   const editorRef = useRef<EditorView | null>(null)
+  const prevScrollLine = useRef<number | null>(null)
   const selectedIssueIndex = useProjectStore((s) => s.selectedIssueIndex)
   const analysisResult = useProjectStore((s) => s.analysisResult)
   const setScrollToLine = useProjectStore((s) => s.setScrollToLine)
@@ -78,18 +79,20 @@ export function CodeViewer({ filePath }: CodeViewerProps): JSX.Element {
 
   useEffect(() => {
     if (!filePath) return
+    let cancelled = false
     const loadFile = async (): Promise<void> => {
       try {
         const { invoke } = await import('@tauri-apps/api/core')
         const text = await invoke<string>('read_file', { path: filePath })
+        if (cancelled) return
         setContent(text)
         useProjectStore.getState().setFileContent(text)
       } catch (e: unknown) {
-        console.error('Error al leer archivo:', e)
-        setContent('// Error al leer el archivo')
+        if (!cancelled) setContent('// Error al leer el archivo')
       }
     }
     loadFile()
+    return () => { cancelled = true }
   }, [filePath])
 
   useEffect(() => {
@@ -108,7 +111,8 @@ export function CodeViewer({ filePath }: CodeViewerProps): JSX.Element {
   }, [selectedIssueIndex, analysisResult, setScrollToLine])
 
   useEffect(() => {
-    if (!scrollToLine || !editorRef.current) return
+    if (!scrollToLine || !editorRef.current || scrollToLine === prevScrollLine.current) return
+    prevScrollLine.current = scrollToLine
     const view = editorRef.current
     const doc = view.state.doc
     if (scrollToLine > doc.lines) return
@@ -117,14 +121,13 @@ export function CodeViewer({ filePath }: CodeViewerProps): JSX.Element {
       selection: { anchor: lineInfo.from },
       scrollIntoView: true,
     })
-    // Flash highlight
     view.dispatch({
       effects: flashHighlightEffect.of(scrollToLine),
     })
     setTimeout(() => {
       view.dispatch({ effects: flashHighlightEffect.of(null) })
     }, 1500)
-  }, [scrollToLine, editorRef.current?.state.doc])
+  }, [scrollToLine])
 
   useEffect(() => {
     if (!editorRef.current || !analysisResult) return
@@ -147,16 +150,6 @@ export function CodeViewer({ filePath }: CodeViewerProps): JSX.Element {
     }),
   ], [])
 
-  useEffect(() => {
-    if (!editorRef.current || !content) return
-    const view = editorRef.current
-    const current = view.state.doc.toString()
-    if (current === content) return
-    view.dispatch({
-      changes: { from: 0, to: view.state.doc.length, insert: content },
-    })
-  }, [content])
-
   if (!filePath) {
     return (
       <div className="flex items-center justify-center h-full text-gray-500">
@@ -171,6 +164,7 @@ export function CodeViewer({ filePath }: CodeViewerProps): JSX.Element {
     <div className="h-full flex flex-col overflow-hidden">
       <div className="flex-1 overflow-hidden">
         <CodeMirror
+          value={content}
           extensions={extensions}
           theme="dark"
           height="100%"
@@ -180,11 +174,6 @@ export function CodeViewer({ filePath }: CodeViewerProps): JSX.Element {
           }}
           onCreateEditor={(view: EditorView) => {
             editorRef.current = view
-            if (content) {
-              view.dispatch({
-                changes: { from: 0, to: view.state.doc.length, insert: content },
-              })
-            }
           }}
         />
       </div>

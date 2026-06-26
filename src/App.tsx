@@ -5,6 +5,7 @@ import { BugPanel } from './components/BugPanel'
 import { Dashboard } from './components/Dashboard'
 import { TestOutput } from './components/TestOutput'
 import { ArchitectureView } from './components/ArchitectureView'
+import { ErrorBoundary } from './components/ErrorBoundary'
 import { useFileTree } from './hooks/useFileTree'
 import { useProjectStore, type AnalysisResult, type ArchitectureGraph, type Toast } from './store/projectStore'
 import { FolderOpen, FlaskConical, Bug, PanelRightClose, PanelRightOpen, Menu, Settings, HelpCircle, X, CheckCircle, AlertCircle, Network, FileCode, Layers, FileText } from 'lucide-react'
@@ -260,6 +261,7 @@ export default function App(): JSX.Element {
 
         {/* Code view — always mounted, toggled by display */}
         <div style={{ display: view === 'code' ? 'flex' : 'none', flex: 1, overflow: 'hidden' }}>
+          <ErrorBoundary>
           <main className="flex-1 overflow-hidden flex flex-col">
             {selectedFile ? (
               <>
@@ -284,6 +286,7 @@ export default function App(): JSX.Element {
               <Dashboard />
             )}
           </main>
+          </ErrorBoundary>
           <aside className={cn(
             'border-l border-dark-border bg-dark-surface overflow-hidden shrink-0',
             rightOpen ? 'w-[340px]' : 'w-0'
@@ -296,9 +299,11 @@ export default function App(): JSX.Element {
 
         {/* Architecture view — always mounted, toggled by display */}
         <div style={{ display: view === 'architecture' ? 'flex' : 'none', flex: 1, overflow: 'hidden' }}>
+          <ErrorBoundary>
           <main className="flex-1 overflow-hidden">
             <ArchitectureView />
           </main>
+          </ErrorBoundary>
         </div>
       </div>
 
