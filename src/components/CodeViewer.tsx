@@ -18,7 +18,8 @@ const severityColors: Record<string, string> = {
 
 function buildGutterMarkers(issues: { line: number; severity: string }[]): DecorationSet {
   const builder = new RangeSetBuilder<Decoration>()
-  for (const issue of issues) {
+  const sorted = [...issues].sort((a, b) => a.line - b.line)
+  for (const issue of sorted) {
     const color = severityColors[issue.severity] || '#6b7280'
     const deco = Decoration.line({
       attributes: {
