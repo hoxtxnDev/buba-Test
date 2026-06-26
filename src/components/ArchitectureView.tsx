@@ -4,11 +4,12 @@ import { X, AlertTriangle, AlertCircle, Info } from 'lucide-react'
 
 const NODE_W = 190
 const NODE_H = 52
-const COL_WIDTH = 220
-const COL_GAP = 40
-const ROW_HEIGHT = 68
+const COL_W = 210
+const COL_GAP = 30
+const ROW_HEIGHT = NODE_H + 10
+const LAYER_HEADER_HEIGHT = 24
 const START_X = 20
-const START_Y = 50
+const START_Y = 55
 const LAYER_ORDER = ['CONTROLLER', 'SERVICE', 'REPOSITORY', 'ENTITY', 'DTO', 'UNKNOWN']
 
 const LAYER_STYLES: Record<string, { bg: string; border: string; accent: string; textColor: string; label: string }> = {
@@ -30,54 +31,55 @@ function getIssueBadge(node: ArchNode): { count: number; color: string } | null 
   return { count: node.issues.length, color: hasCritical ? '#ef4444' : '#f59e0b' }
 }
 
-function drawEdge(edge: ArchEdge, layoutMap: Map<string, { x: number; y: number }>) {
-  const from = layoutMap.get(edge.from)
-  const to = layoutMap.get(edge.to)
-  if (!from || !to) return null
-
+function routeEdge(
+  from: { x: number; y: number },
+  to: { x: number; y: number },
+): string {
   const x1 = from.x + NODE_W
   const y1 = from.y + NODE_H / 2
   const x2 = to.x
   const y2 = to.y + NODE_H / 2
 
-  const color = edge.type === 'MISSING' ? '#ef4444'
-    : edge.type === 'FEIGN' ? '#534AB7'
-    : '#2a2f3d'
+  // Same column — vertical connection, exit bottom / enter top
+  if (Math.abs(x1 - x2) < NODE_W + 20) {
+    const exitX = from.x + NODE_W / 2
+    const exitY = from.y + NODE_H
+    const entX = to.x + NODE_W / 2
+    const entY = to.y
+    const mid = (exitY + entY) / 2
+    return `M${exitX},${exitY} C${exitX},${mid} ${entX},${mid} ${entX},${entY}`
+  }
 
-  const dash = edge.type === 'MISSING' ? '4 3'
-    : edge.type === 'FEIGN' ? '3 2'
-    : undefined
-
-  const midX = (x1 + x2) / 2
-  const d = `M${x1},${y1} C${midX},${y1} ${midX},${y2} ${x2},${y2}`
-
-  return (
-    <path
-      key={`${edge.from}-${edge.to}`}
-      d={d}
-      fill="none"
-      stroke={color}
-      strokeWidth={1.2}
-      strokeDasharray={dash}
-      markerEnd="url(#arr)"
-    />
-  )
+  // Cross-column: cubic bezier with control points at 40%
+  const dx = Math.abs(x2 - x1) * 0.4
+  return `M${x1},${y1} C${x1 + dx},${y1} ${x2 - dx},${y2} ${x2},${y2}`
 }
 
 export function ArchitectureView(): JSX.Element {
   const graph = useProjectStore((s) => s.architectureGraph)
   const setSelectedFile = useProjectStore((s) => s.setSelectedFile)
+  const setScrollToLine = useProjectStore((s) => s.setScrollToLine)
+  const setActiveIssue = useProjectStore((s) => s.setActiveIssue)
+  const setView = useProjectStore((s) => s.setView)
   const setToast = useProjectStore((s) => s.setToast)
+  const analysisResult = useProjectStore((s) => s.analysisResult)
+
   const [selectedNode, setSelectedNode] = useState<ArchNode | null>(null)
+  const [hoveredNode, setHoveredNode] = useState<string | null>(null)
+  const [zoom, setZoom] = useState(1)
+  const [pan, setPan] = useState({ x: 0, y: 0 })
+  const [isPanning, setIsPanning] = useState(false)
+  const [lastMouse, setLastMouse] = useState({ x: 0, y: 0 })
 
   const layout = useMemo(() => {
     if (!graph || graph.nodes.length === 0) {
-      return { layoutMap: new Map(), edges: [] as ArchEdge[], microserviceRects: [] as { name: string; x: number; y: number; width: number; height: number }[], totalW: 600, totalH: 400 }
+      return { layoutMap: new Map(), edges: [] as ArchEdge[], microserviceRects: [] as { name: string; x: number; y: number; width: number; height: number }[], layerGroups: [] as { layer: string; x: number; y: number }[], totalW: 600, totalH: 400 }
     }
 
     const nodes = graph.nodes
     const edges = graph.edges
     const layoutMap = new Map<string, { x: number; y: number }>()
+    const layerGroups: { layer: string; x: number; y: number }[] = []
 
     const byService = new Map<string, ArchNode[]>()
     nodes.forEach(n => {
@@ -88,22 +90,38 @@ export function ArchitectureView(): JSX.Element {
     const colSizes: number[] = []
     let colIndex = 0
     byService.forEach((serviceNodes) => {
-      const sorted = [...serviceNodes].sort((a, b) =>
-        LAYER_ORDER.indexOf(a.layer) - LAYER_ORDER.indexOf(b.layer)
-      )
-      sorted.forEach((node, rowIndex) => {
-        const x = START_X + colIndex * (COL_WIDTH + COL_GAP)
-        const y = START_Y + rowIndex * ROW_HEIGHT
-        layoutMap.set(node.id, { x, y })
+      const byLayer = new Map<string, ArchNode[]>()
+      serviceNodes.forEach(n => {
+        if (!byLayer.has(n.layer)) byLayer.set(n.layer, [])
+        byLayer.get(n.layer)!.push(n)
       })
-      colSizes.push(sorted.length)
+
+      let currentY = START_Y
+      const colX = START_X + colIndex * (COL_W + COL_GAP)
+
+      LAYER_ORDER.forEach(layer => {
+        const layerNodes = byLayer.get(layer)
+        if (!layerNodes || layerNodes.length === 0) return
+
+        currentY += LAYER_HEADER_HEIGHT
+        layerGroups.push({ layer, x: colX + 5, y: currentY - 8 })
+
+        layerNodes.forEach(node => {
+          layoutMap.set(node.id, { x: colX, y: currentY })
+          currentY += ROW_HEIGHT
+        })
+
+        currentY += 8
+      })
+
+      colSizes.push(serviceNodes.length)
       colIndex++
     })
 
     const microserviceCount = byService.size
-    const totalW = microserviceCount * (COL_WIDTH + COL_GAP) + START_X
+    const totalW = microserviceCount * (COL_W + COL_GAP) + START_X
     const maxNodesInCol = Math.max(...colSizes, 1)
-    const totalH = START_Y + maxNodesInCol * ROW_HEIGHT + 40
+    const totalH = START_Y + maxNodesInCol * (ROW_HEIGHT + LAYER_HEADER_HEIGHT + 8) + 80
 
     const microserviceRects = Array.from(byService.entries()).map(([name, serviceNodes]) => {
       const positions = serviceNodes.map(n => layoutMap.get(n.id)!).filter(Boolean)
@@ -121,13 +139,25 @@ export function ArchitectureView(): JSX.Element {
       }
     })
 
-    return { layoutMap, edges, microserviceRects, totalW, totalH }
+    return { layoutMap, edges, microserviceRects, layerGroups, totalW, totalH }
   }, [graph])
 
-  const handleViewFile = useCallback((path: string): void => {
-    setSelectedFile(path)
+  const handleViewFile = useCallback((node: ArchNode): void => {
+    setSelectedFile(node.path)
+    setView('code')
+    // Find first critical issue, else first issue
+    const critical = node.issues.find(i => i.severity === 'CRITICAL')
+    const first = node.issues[0]
+    if (critical || first) {
+      const target = critical || first!
+      setScrollToLine(target.line)
+      setActiveIssue(target)
+    } else {
+      setScrollToLine(null)
+      setActiveIssue(null)
+    }
     setSelectedNode(null)
-  }, [setSelectedFile])
+  }, [setSelectedFile, setView, setScrollToLine, setActiveIssue])
 
   const handleGenerateTest = useCallback(async (node: ArchNode): Promise<void> => {
     try {
@@ -145,6 +175,31 @@ export function ArchitectureView(): JSX.Element {
     }
   }, [setToast])
 
+  const handleWheel = useCallback((e: React.WheelEvent) => {
+    e.preventDefault()
+    const delta = e.deltaY > 0 ? 0.9 : 1.1
+    setZoom(z => Math.min(Math.max(z * delta, 0.3), 3))
+  }, [])
+
+  const handleMouseDown = useCallback((e: React.MouseEvent) => {
+    setIsPanning(true)
+    setLastMouse({ x: e.clientX, y: e.clientY })
+  }, [])
+
+  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+    if (!isPanning) return
+    setPan(p => ({
+      x: p.x + (e.clientX - lastMouse.x),
+      y: p.y + (e.clientY - lastMouse.y),
+    }))
+    setLastMouse({ x: e.clientX, y: e.clientY })
+  }, [isPanning, lastMouse])
+
+  const handleMouseUp = useCallback(() => setIsPanning(false), [])
+
+  const handleNodeEnter = useCallback((id: string) => setHoveredNode(id), [])
+  const handleNodeLeave = useCallback(() => setHoveredNode(null), [])
+
   if (!graph || graph.nodes.length === 0) {
     return (
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100%', color: '#6b7280', fontSize: 14 }}>
@@ -155,91 +210,138 @@ export function ArchitectureView(): JSX.Element {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%', width: '100%', background: '#0d0f14' }}>
-      {/* Legend Row */}
-      <div style={{ display: 'flex', gap: 12, padding: '6px 14px', background: '#0d0f14', borderBottom: '0.5px solid #1e2330', alignItems: 'center' }}>
+      {/* Legend */}
+      <div style={{ display: 'flex', gap: 12, padding: '6px 14px', background: '#0d0f14', borderBottom: '0.5px solid #1e2330', alignItems: 'center', flexShrink: 0 }}>
         {Object.entries(LAYER_STYLES).filter(([k]) => k !== 'UNKNOWN').map(([layer, s]) => (
           <div key={layer} style={{ display: 'flex', alignItems: 'center', gap: 5 }}>
             <div style={{ width: 8, height: 8, borderRadius: '50%', background: s.accent }} />
             <span style={{ fontSize: 11, color: '#6b7280' }}>{s.label}</span>
           </div>
         ))}
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginLeft: 8 }}>
-          <div style={{ width: 12, height: 3, background: '#ef4444', borderRadius: 1 }} />
-          <span style={{ fontSize: 11, color: '#6b7280' }}>Faltante</span>
-        </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 5, marginLeft: 8 }}>
-          <div style={{ width: 12, height: 3, background: '#534AB7', borderRadius: 1 }} />
-          <span style={{ fontSize: 11, color: '#6b7280' }}>Feign</span>
-        </div>
+        <div style={{ width: 1, height: 14, background: '#2a2f3d', margin: '0 4px' }} />
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}><div style={{ width: 12, height: 3, background: '#ef4444', borderRadius: 1 }} /><span style={{ fontSize: 11, color: '#6b7280' }}>Faltante</span></div>
+        <div style={{ display: 'flex', alignItems: 'center', gap: 5 }}><div style={{ width: 12, height: 3, background: '#534AB7', borderRadius: 1 }} /><span style={{ fontSize: 11, color: '#6b7280' }}>Feign</span></div>
       </div>
 
-      {/* SVG Container */}
-      <div style={{ position: 'relative', flex: 1, overflow: 'auto' }}>
-        <svg viewBox={`0 0 ${layout.totalW} ${layout.totalH}`} width="100%" height="100%" style={{ minWidth: layout.totalW, minHeight: layout.totalH }}>
+      {/* SVG canvas */}
+      <div style={{ position: 'relative', flex: 1, overflow: 'hidden' }}>
+        <svg
+          width="100%" height="100%"
+          onWheel={handleWheel}
+          onMouseDown={handleMouseDown}
+          onMouseMove={handleMouseMove}
+          onMouseUp={handleMouseUp}
+          onMouseLeave={handleMouseUp}
+          style={{ cursor: isPanning ? 'grabbing' : 'grab', display: 'block' }}
+        >
           <defs>
             <marker id="arr" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
               <path d="M0,0 L10,5 L0,10 Z" fill="#2a2f3d" />
             </marker>
           </defs>
 
-          {/* Microservice containers */}
-          {layout.microserviceRects.map((ms) => (
-            <g key={ms.name}>
-              <rect x={ms.x} y={ms.y} width={ms.width} height={ms.height} rx={8} fill="none" stroke="#1e2330" strokeWidth={1} strokeDasharray="4 3" />
-              <text x={ms.x + 10} y={ms.y + 16} fontSize={10} fill="#4b5563" fontWeight={600} style={{ letterSpacing: 1 }}>
-                {ms.name.toUpperCase()}
-              </text>
-            </g>
-          ))}
+          <g transform={`translate(${pan.x},${pan.y}) scale(${zoom})`}>
+            <rect x={0} y={0} width={layout.totalW} height={layout.totalH} fill="#0d0f14" />
 
-          {/* Edges (drawn before nodes) */}
-          {layout.edges.map((edge) => drawEdge(edge, layout.layoutMap))}
-
-          {/* Nodes */}
-          {Array.from(layout.layoutMap.entries()).map(([id, pos]) => {
-            const node = graph.nodes.find(n => n.id === id)
-            if (!node) return null
-            const style = LAYER_STYLES[node.layer] || LAYER_STYLES.UNKNOWN
-            const badge = getIssueBadge(node)
-
-            return (
-              <g key={id} style={{ cursor: 'pointer' }} onClick={() => setSelectedNode(node)}>
-                <title>{node.name} — {node.pkg}</title>
-
-                {/* Node body */}
-                <rect x={pos.x} y={pos.y} width={NODE_W} height={NODE_H} rx={6} fill={style.bg} stroke={selectedNode?.id === id ? style.accent : style.border} strokeWidth={selectedNode?.id === id ? 2 : 1} />
-
-                {/* Accent left bar */}
-                <rect x={pos.x} y={pos.y} width={4} height={NODE_H} rx={2} fill={style.accent} />
-
-                {/* Class name */}
-                <text x={pos.x + 14} y={pos.y + 20} fontSize={12} fontWeight={500} fill={style.textColor}>
-                  {truncate(node.name, 22)}
+            {/* Microservice containers */}
+            {layout.microserviceRects.map((ms) => (
+              <g key={ms.name}>
+                <rect x={ms.x} y={ms.y} width={ms.width} height={ms.height} rx={8} fill="none" stroke="#1e2330" strokeWidth={1} strokeDasharray="4 3" />
+                <text x={ms.x + 10} y={ms.y + 16} fontSize={10} fill="#4b5563" fontWeight={600} style={{ letterSpacing: 1 }}>
+                  {ms.name.toUpperCase()}
                 </text>
-
-                {/* Layer label */}
-                <text x={pos.x + 14} y={pos.y + 34} fontSize={10} fill="#4b5563">
-                  {style.label}
-                </text>
-
-                {/* Issue badge */}
-                {badge && (
-                  <g>
-                    <circle cx={pos.x + NODE_W - 10} cy={pos.y + 10} r={9} fill={badge.color} />
-                    <text x={pos.x + NODE_W - 10} y={pos.y + 14} fontSize={9} fontWeight={600} textAnchor="middle" fill="#fff">
-                      {badge.count > 9 ? '9+' : badge.count}
-                    </text>
-                  </g>
-                )}
               </g>
-            )
-          })}
+            ))}
+
+            {/* Layer group labels */}
+            {layout.layerGroups.map((lg, i) => (
+              <text key={i} x={lg.x} y={lg.y} fontSize={9} fill="#374151" style={{ letterSpacing: '0.08em', textTransform: 'uppercase' }}>
+                {lg.layer}
+              </text>
+            ))}
+
+            {/* Edges */}
+            {layout.edges.map((edge) => {
+              const from = layout.layoutMap.get(edge.from)
+              const to = layout.layoutMap.get(edge.to)
+              if (!from || !to) return null
+
+              const color = edge.type === 'MISSING' ? '#ef4444' : edge.type === 'FEIGN' ? '#534AB7' : '#2a2f3d'
+              const dash = edge.type === 'MISSING' ? '5 4' : edge.type === 'FEIGN' ? '3 2' : undefined
+              const edgeOpacity =
+                !hoveredNode || hoveredNode === edge.from || hoveredNode === edge.to
+                  ? 0.6
+                  : 0.15
+
+              return (
+                <path
+                  key={`${edge.from}-${edge.to}`}
+                  d={routeEdge(from, to)}
+                  fill="none"
+                  stroke={color}
+                  strokeWidth={1.2}
+                  strokeDasharray={dash}
+                  markerEnd="url(#arr)"
+                  style={{ opacity: edgeOpacity, transition: 'opacity 0.15s' }}
+                />
+              )
+            })}
+
+            {/* Nodes */}
+            {Array.from(layout.layoutMap.entries()).map(([id, pos]) => {
+              const node = graph.nodes.find(n => n.id === id)
+              if (!node) return null
+              const style = LAYER_STYLES[node.layer] || LAYER_STYLES.UNKNOWN
+              const badge = getIssueBadge(node)
+
+              return (
+                <g
+                  key={id}
+                  style={{ cursor: 'pointer' }}
+                  onClick={() => setSelectedNode(node)}
+                  onMouseEnter={() => handleNodeEnter(id)}
+                  onMouseLeave={handleNodeLeave}
+                >
+                  <title>{node.name} — {node.pkg}</title>
+
+                  <rect x={pos.x} y={pos.y} width={NODE_W} height={NODE_H} rx={6} fill={style.bg} stroke={selectedNode?.id === id ? style.accent : style.border} strokeWidth={selectedNode?.id === id ? 2 : 1} />
+                  <rect x={pos.x} y={pos.y} width={4} height={NODE_H} rx={2} fill={style.accent} />
+
+                  <text x={pos.x + 14} y={pos.y + 20} fontSize={12} fontWeight={500} fill={style.textColor}>
+                    {truncate(node.name, 22)}
+                  </text>
+                  <text x={pos.x + 14} y={pos.y + 34} fontSize={10} fill="#4b5563">
+                    {style.label}
+                  </text>
+
+                  {badge && (
+                    <g>
+                      <circle cx={pos.x + NODE_W - 10} cy={pos.y + 10} r={9} fill={badge.color} />
+                      <text x={pos.x + NODE_W - 10} y={pos.y + 14} fontSize={9} fontWeight={600} textAnchor="middle" fill="#fff">
+                        {badge.count > 9 ? '9+' : badge.count}
+                      </text>
+                    </g>
+                  )}
+                </g>
+              )
+            })}
+          </g>
         </svg>
 
-        {/* Detail Panel */}
+        {/* Zoom controls */}
+        <div style={{ position: 'absolute', bottom: 12, right: 12, display: 'flex', flexDirection: 'column', gap: 4, zIndex: 10 }}>
+          <button onClick={() => setZoom(z => Math.min(z * 1.2, 3))} style={{ width: 28, height: 28, background: '#1a1e28', border: '0.5px solid #2a2f3d', borderRadius: 4, color: '#9ca3af', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>+</button>
+          <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }) }} style={{ width: 28, height: 28, background: '#1a1e28', border: '0.5px solid #2a2f3d', borderRadius: 4, color: '#9ca3af', fontSize: 11, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⊙</button>
+          <button onClick={() => setZoom(z => Math.max(z * 0.8, 0.3))} style={{ width: 28, height: 28, background: '#1a1e28', border: '0.5px solid #2a2f3d', borderRadius: 4, color: '#9ca3af', fontSize: 16, cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>−</button>
+        </div>
+        <div style={{ position: 'absolute', bottom: 14, left: 12, fontSize: 10, color: '#374151' }}>
+          {Math.round(zoom * 100)}%
+        </div>
+
+        {/* Detail panel */}
         {selectedNode && (
-          <div style={{ position: 'absolute', top: 10, right: 10, width: 240, background: '#1a1e28', border: '0.5px solid #2a2f3d', borderRadius: 8, padding: 14, zIndex: 10, fontSize: 12, color: '#9ca3af' }}>
-            <button onClick={() => setSelectedNode(null)} style={{ position: 'absolute', top: 8, right: 8, background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: 2 }}>
+          <div style={{ position: 'absolute', top: 10, right: 10, width: 240, background: '#1a1e28', border: '0.5px solid #2a2f3d', borderRadius: 8, padding: 14, zIndex: 10, fontSize: 12, color: '#9ca3af', boxShadow: '0 8px 24px rgba(0,0,0,0.4)' }}>
+            <button onClick={() => setSelectedNode(null)} style={{ position: 'absolute', top: 8, right: 8, background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', padding: 2, lineHeight: 0 }}>
               <X size={14} />
             </button>
 
@@ -260,11 +362,7 @@ export function ArchitectureView(): JSX.Element {
                 <h4 style={{ margin: '0 0 4px 0', fontWeight: 600, color: '#d1d5db', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>Endpoints</h4>
                 {selectedNode.endpoints.map((ep, i) => (
                   <div key={i} style={{ fontFamily: 'monospace', fontSize: 10, marginBottom: 2 }}>
-                    <span style={{
-                      padding: '0 4px', borderRadius: 2, fontWeight: 600, marginRight: 4,
-                      color: ep.method === 'GET' ? '#4ade80' : ep.method === 'POST' ? '#60a5fa' : ep.method === 'PUT' ? '#fbbf24' : '#f87171',
-                      background: ep.method === 'GET' ? 'rgba(74,222,128,0.15)' : ep.method === 'POST' ? 'rgba(96,165,250,0.15)' : ep.method === 'PUT' ? 'rgba(251,191,36,0.15)' : 'rgba(248,113,113,0.15)',
-                    }}>
+                    <span style={{ padding: '0 4px', borderRadius: 2, fontWeight: 600, marginRight: 4, color: ep.method === 'GET' ? '#4ade80' : ep.method === 'POST' ? '#60a5fa' : ep.method === 'PUT' ? '#fbbf24' : '#f87171', background: ep.method === 'GET' ? 'rgba(74,222,128,0.15)' : ep.method === 'POST' ? 'rgba(96,165,250,0.15)' : ep.method === 'PUT' ? 'rgba(251,191,36,0.15)' : 'rgba(248,113,113,0.15)' }}>
                       {ep.method}
                     </span>
                     <span style={{ color: '#93c5fd' }}>{ep.path}</span>
@@ -295,15 +393,13 @@ export function ArchitectureView(): JSX.Element {
                       {iss.message}
                     </p>
                   ))}
-                  {selectedNode.issues.length > 5 && (
-                    <p style={{ margin: 0, fontSize: 10, color: '#4b5563' }}>… y {selectedNode.issues.length - 5} más</p>
-                  )}
+                  {selectedNode.issues.length > 5 && <p style={{ margin: 0, fontSize: 10, color: '#4b5563' }}>… y {selectedNode.issues.length - 5} más</p>}
                 </div>
               </div>
             )}
 
             <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
-              <button onClick={() => handleViewFile(selectedNode.path)} style={{ flex: 1, padding: '5px 8px', background: '#4f8ef7', color: '#fff', border: 'none', borderRadius: 4, fontSize: 11, fontWeight: 500, cursor: 'pointer' }}>
+              <button onClick={() => handleViewFile(selectedNode)} style={{ flex: 1, padding: '5px 8px', background: '#4f8ef7', color: '#fff', border: 'none', borderRadius: 4, fontSize: 11, fontWeight: 500, cursor: 'pointer' }}>
                 Ver archivo
               </button>
               <button onClick={() => handleGenerateTest(selectedNode)} style={{ flex: 1, padding: '5px 8px', background: '#7c6af7', color: '#fff', border: 'none', borderRadius: 4, fontSize: 11, fontWeight: 500, cursor: 'pointer' }}>

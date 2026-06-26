@@ -57,7 +57,8 @@ export default function App(): JSX.Element {
 
   const [rightPanel, setRightPanel] = useState<RightPanel>('bugs')
   const [rightOpen, setRightOpen] = useState(true)
-  const [view, setView] = useState<ViewMode>('code')
+  const view = useProjectStore((s) => s.view)
+  const setView = useProjectStore((s) => s.setView)
   const projectRoot = useProjectStore((s) => s.projectRoot)
   const setArchitectureGraph = useProjectStore((s) => s.setArchitectureGraph)
 

@@ -110,7 +110,7 @@ fn extract_package(content: &str) -> String {
 }
 
 fn extract_endpoints(content: &str) -> Vec<Endpoint> {
-    let re = Regex::new(r"@([A-Z][a-z]+)Mapping\(\s*\"([^\"]+)\"").unwrap();
+    let re = Regex::new(r#"@([A-Z][a-z]+)Mapping\(\s*"([^"]+)"\)"#).unwrap();
     re.captures_iter(content).map(|c| Endpoint {
         method: c.get(1).map(|m| m.as_str().to_uppercase()).unwrap_or_default(),
         path: c.get(2).map(|m| m.as_str().to_string()).unwrap_or_default(),

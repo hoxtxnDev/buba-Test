@@ -104,6 +104,10 @@ interface AppState {
   setIsAnalyzing: (a: boolean) => void
   opencodeOutput: string | null
   setOpencodeOutput: (o: string | null) => void
+  activeIssue: Issue | null
+  setActiveIssue: (i: Issue | null) => void
+  view: 'code' | 'architecture'
+  setView: (v: 'code' | 'architecture') => void
 }
 
 export const useProjectStore = create<AppState>((set) => ({
@@ -137,4 +141,8 @@ export const useProjectStore = create<AppState>((set) => ({
   setIsAnalyzing: (a) => set({ isAnalyzing: a }),
   opencodeOutput: null,
   setOpencodeOutput: (o) => set({ opencodeOutput: o }),
+  activeIssue: null,
+  setActiveIssue: (i) => set({ activeIssue: i }),
+  view: 'code',
+  setView: (v) => set({ view: v }),
 }))
